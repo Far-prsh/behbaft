@@ -10,7 +10,14 @@ import { Form, Formik } from "formik";
 import LoginInput from "@/components/inputs/loginInput";
 import { useState } from "react";
 import PrimaryBtn from "@/components/buttons/primaryBtn";
-import { getProviders, signIn } from "next-auth/react";
+import {
+  getCsrfToken,
+  getProviders,
+  getSession,
+  signIn,
+} from "next-auth/react";
+import RiseLoaderSpinner from "@/components/loaders/riseloader";
+import Router from "next/router";
 
 const initialValues = {
   login_email: "",
@@ -21,9 +28,10 @@ const initialValues = {
   conf_password: "",
   success: "",
   error: "",
+  login_error: "",
 };
 
-function SignIn({ country, providers }) {
+function SignIn({ country, providers, csrfToken, callbackUrl }) {
   const [loading, setLoading] = useState(false);
 
   const [user, setUser] = useState(initialValues);
@@ -36,6 +44,7 @@ function SignIn({ country, providers }) {
     conf_password,
     success,
     error,
+    login_error,
   } = user;
 
   const loginValidation = Yup.object({
@@ -68,7 +77,7 @@ function SignIn({ country, providers }) {
     setUser({ ...user, [name]: value });
   };
 
-  const signupHandler = async() => {
+  const signupHandler = async () => {
     try {
       setLoading(true);
 
@@ -77,16 +86,46 @@ function SignIn({ country, providers }) {
         email,
         password,
       });
-      setUser({...user, error: '', success: data.message})
+      setUser({ ...user, error: "", success: data.message });
       setLoading(false);
+
+      setTimeout(async () => {
+        let options = {
+          redirect: false,
+          email: email,
+          password: password,
+        };
+        const res = await signIn("credentials", options);
+        Router.push("/");
+      }, 1000);
     } catch (error) {
       setLoading(false);
       setUser({ ...user, success: "", error: error.response.data.message });
     }
   };
 
+  const signInHandler = async () => {
+    setLoading(true);
+    let options = {
+      redirect: false,
+      email: login_email,
+      password: login_password,
+    };
+    const res = await signIn("credentials", options);
+    setUser({ ...user, success: "", error: "" });
+    setLoading(false);
+    if (res?.error) {
+      setLoading(false);
+      setUser({ ...user, login_error: res?.error });
+    } else {
+      return Router.push(callbackUrl || "/");
+    }
+  };
+
   return (
     <>
+      {loading && <RiseLoaderSpinner loading={loading} />}
+
       <Header country={country} />
       <div className={styles.login}>
         <div className={styles.login__container}>
@@ -107,9 +146,17 @@ function SignIn({ country, providers }) {
                 login_password,
               }}
               validationSchema={loginValidation}
+              onSubmit={() => {
+                signInHandler();
+              }}
             >
               {(form) => (
-                <Form>
+                <Form method="post" action="/api/auth/signin/email">
+                  <input
+                    type="hidden"
+                    defaultValue={csrfToken}
+                    name="csrfToken"
+                  />
                   <LoginInput
                     type="email"
                     name="login_email"
@@ -125,6 +172,9 @@ function SignIn({ country, providers }) {
                     onChange={changeHandler}
                   />
                   <PrimaryBtn type="submit" text="Sign in" />
+                  {login_error && (
+                    <span className={styles.errorm}>{login_error}</span>
+                  )}
                   <div className={styles.forgot}>
                     <Link href="/forgot">Forgot password?</Link>
                   </div>
@@ -133,20 +183,25 @@ function SignIn({ country, providers }) {
             </Formik>
             <div className={styles.login__socials}>
               <span className={styles.or}>Or continue with</span>
-              {providers.map((provider) => (
-                <div key={provider.name}>
-                  <button
-                    className={styles.social__btn}
-                    onClick={() => signIn(provider.id)}
-                  >
-                    <img
-                      src={`../../images/${provider.name}.png`}
-                      alt={provider.name}
-                    />
-                    Sign in with {provider.name}
-                  </button>
-                </div>
-              ))}
+              {providers.map((provider) => {
+                if (provider.name === "Credentials") {
+                  return;
+                }
+                return (
+                  <div key={provider.name}>
+                    <button
+                      className={styles.social__btn}
+                      onClick={() => signIn(provider.id)}
+                    >
+                      <img
+                        src={`../../images/${provider.name}.png`}
+                        alt={provider.name}
+                      />
+                      Sign in with {provider.name}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -198,8 +253,10 @@ function SignIn({ country, providers }) {
                 </Form>
               )}
             </Formik>
-            <div>{success && <span>{success}</span>}</div>
-            <div>{error && <span>{error}</span>}</div>
+            <div>
+              {success && <span className={styles.success}>{success}</span>}
+            </div>
+            <div>{error && <span className={styles.errorm}>{error}</span>}</div>
           </div>
         </div>
       </div>
@@ -219,7 +276,21 @@ export async function getServerSideProps(context) {
     .catch((err) => {
       console.log(err);
     });
+
   const providers = Object.values(await getProviders());
+
+  const { req, query } = context;
+  const session = await getSession({ req });
+  const { callbackUrl } = query;
+  if (session) {
+    return {
+      redirect: {
+        destination: callbackUrl,
+      },
+    };
+  }
+  const csrfToken = await getCsrfToken(context);
+
   return {
     props: {
       // country: {name: data.name, flag: data.flag.emojitwo }
@@ -228,6 +299,8 @@ export async function getServerSideProps(context) {
         flag: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d9/Flag_of_Canada_%28Pantone%29.svg/255px-Flag_of_Canada_%28Pantone%29.svg.png",
       },
       providers: providers,
+      csrfToken,
+      callbackUrl,
     },
   };
 }
