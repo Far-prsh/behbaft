@@ -5,6 +5,7 @@ import User from "../../../../models/User";
 import bcrypt from "bcrypt";
 import { createActivationToken } from "@/utils/token";
 import { sendEmail } from "@/utils/sendEmail";
+import activateEmailTemplate from "@/emails/activateEmailTemplate";
 
 const baseURL = "http://localhost:3000";
 
@@ -44,7 +45,7 @@ handler.post(async (req, res) => {
     });
 
     const url = `${baseURL}/activate/${activation_token}`;
-    sendEmail(email, url, "", "Activate your email");
+    sendEmail(email, url, "", "Activate your email", activateEmailTemplate);
     await db.disconnectDb();
     res.json({ message: "Register success, Please activate your email" });
 

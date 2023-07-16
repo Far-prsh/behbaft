@@ -118,10 +118,10 @@ function SignIn({ country, providers, csrfToken, callbackUrl }) {
       setLoading(false);
       setUser({ ...user, login_error: res?.error });
     } else {
+
       return Router.push(callbackUrl || "/");
     }
   };
-
   return (
     <>
       {loading && <RiseLoaderSpinner loading={loading} />}
@@ -176,7 +176,7 @@ function SignIn({ country, providers, csrfToken, callbackUrl }) {
                     <span className={styles.errorm}>{login_error}</span>
                   )}
                   <div className={styles.forgot}>
-                    <Link href="/forgot">Forgot password?</Link>
+                    <Link href="/auth/forgot">Forgot password?</Link>
                   </div>
                 </Form>
               )}
@@ -268,6 +268,19 @@ function SignIn({ country, providers, csrfToken, callbackUrl }) {
 export default SignIn;
 
 export async function getServerSideProps(context) {
+  const { req } = context;
+
+  const session = await getSession({ req });
+  const callbackUrl = context.query.callbackUrl || ""; // Provide a default value
+  
+  if (session) {
+    return {
+      redirect: {
+        destination: callbackUrl,
+      },
+    };
+  }
+
   let data = await axios
     .get("https://api.ipregistry.co/?key=hznlnxegjsv8cb86")
     .then((res) => {
@@ -279,16 +292,6 @@ export async function getServerSideProps(context) {
 
   const providers = Object.values(await getProviders());
 
-  const { req, query } = context;
-  const session = await getSession({ req });
-  const { callbackUrl } = query;
-  if (session) {
-    return {
-      redirect: {
-        destination: callbackUrl,
-      },
-    };
-  }
   const csrfToken = await getCsrfToken(context);
 
   return {
@@ -298,7 +301,7 @@ export async function getServerSideProps(context) {
         name: "Canada",
         flag: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d9/Flag_of_Canada_%28Pantone%29.svg/255px-Flag_of_Canada_%28Pantone%29.svg.png",
       },
-      providers: providers,
+      providers,
       csrfToken,
       callbackUrl,
     },
